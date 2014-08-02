@@ -4,7 +4,7 @@ CATE: Classic ASP Template Engine
 CATE is a simple but powerful template engine for Classic ASP with an easy to learn syntax similar to other template engines.
 
 CATE Simple Template Syntax Example
-===================================
+-----------------------------------
 
     {{if(PAGE_TITLE)}}
        {{INCLUDE[header.tpl]}}
@@ -19,7 +19,7 @@ CATE Simple Template Syntax Example
     {{endif}}
 
 How To Use CATE from ASP
-========================
+------------------------
     <!-- #include virtual="/path/to/template.asp" -->
     <%
         set TENGINE = new TemplateEngine
@@ -33,7 +33,7 @@ How To Use CATE from ASP
     %>
 
 Methods
-=======
+-------
 
   * add( variable_name, value )
 
@@ -80,7 +80,7 @@ Properties
     > Returns the underlying Dictionary collection storing the variables and their values.
 
 Commands
-========
+--------
 
 * `{{IF(expression)}}`
 
