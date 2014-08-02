@@ -58,3 +58,23 @@ Methods
 
     > Replaces the named variables value with the specified value.
       Returns true if the variable was replaced or false if it does not exist.
+
+Properties
+==========
+
+  * TemplateDirectory (read/write)
+
+    > Sets the base directory to look for template files in.
+      When looking for templates the engine itself calls Server.MapPath on the
+      path so all paths should be virtual, i.e. relative to the wwwroot
+      directory. Default = ""
+
+  * WarnOnUnusedTags (read/write)
+
+    > This option controls whether the engine will output an error message
+      if unparsed tags are left in its output. Set to true to enable or
+      false to disable. Default = false
+
+  * Items (read-only)
+
+    > Returns the underlying Dictionary collection storing the variables and their values.

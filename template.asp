@@ -184,10 +184,11 @@ class TemplateEngine
 
     public function parse( fnHTMLfile )
 
-        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue
+        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue,fnLineNo
         fnIfLevel = 0
         redim fnDoOutput(1)
         fnDoOutput(0) = true
+        fnLineNo = 1
 
         fnFileContents = m_getFileContentsAsArray(fnHTMLfile)
 
@@ -264,6 +265,8 @@ class TemplateEngine
                 if(fnDoOutput(fnIfLevel)) then
                     fnResult = fnResult & fnFileLine
                 end if
+
+                fnLineNo = fnLineNo + 1
 
             next
 
