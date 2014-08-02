@@ -44,7 +44,7 @@ class TemplateEngine
 
                 set fnFile = fnfso.OpenTextFile(Server.MapPath(m_templ_dir & fnHTMLfile))
 
-                    while not fnFile.EOF
+                    while not fnFile.AtEndOfStream
 
                         fnLine = fnFile.ReadLine()
                         fnLineCount = fnLineCount + 1
@@ -70,40 +70,77 @@ class TemplateEngine
 
     end function
 
-    private function m_getFileContents( fnHTMLfile )
+    private function m_getFileContents( fnHTMLfilef )
 
-        dim fnResult, fnfso, fnFile
+        dim fnResultf, fnfsof, fnFilef
 
-        set fnfso = Server.CreateObject("Scripting.FileSystemObject")
+        set fnfsof = Server.CreateObject("Scripting.FileSystemObject")
 
-            if(fnfso.FileExists(Server.MapPath(m_templ_dir & fnHTMLfile))) then
+            if(fnfsof.FileExists(Server.MapPath(m_templ_dir & fnHTMLfilef))) then
 
-                set fnFile = fnfso.OpenTextFile(Server.MapPath(m_templ_dir & fnHTMLfile))
+                set fnFilef = fnfsof.OpenTextFile(Server.MapPath(m_templ_dir & fnHTMLfilef))
 
-                    fnResult = fnFile.ReadAll()
+                    fnResultf = fnFilef.ReadAll()
 
-                    if(fnResult = "") then
-                        fnResult = "Error reading template file: " & fnHTMLfile
+                    if(fnResultf = "") then
+                        fnResultf = "Error reading template file: " & fnHTMLfilef
                     end if
 
-                set fnFile = nothing
+                set fnFilef = nothing
 
             else
 
-                fnResult = false
+                fnResultf = false
 
             end if
 
-        set fnfso = nothing
+        set fnfsof = nothing
 
-        m_getFile = fnResult
+        m_getFileContents = fnResultf
+
+    end function
+
+    private function m_applyToString( mFnString )
+
+        dim mFnResult, fnItem, fnIV, fnPattern, i, fnArrRes
+        mFnResult = mFnString
+
+        for each fnItem in m_items
+
+            fnIV = m_items(fnItem)
+
+            if(isArray(fnIV)) then
+
+                fnPattern = fnIV(0)
+                fnArrRes = ""
+
+                for i = 1 to ubound(fnIV)
+
+                    fnArrRes = Replace(fnArrRes,"{{ITEM}}",fnIV(i))
+                    fnArrRes = Replace(fnArrRes,"{{INDEX}}",i-1)
+
+                next
+
+                mFnResult = Replace(mFnResult,"{{" & fnItem & "}}",fnArrRes)
+
+            else
+
+                mFnResult = Replace(mFnResult,"{{" & fnItem & "}}",fnIV)
+
+            end if
+
+        next
+
+        m_applyToString = mFnResult
 
     end function
 
     public function parse( fnHTMLfile )
 
-        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel
+        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue
         fnIfLevel = 0
+        redim fnDoOutput(1)
+        fnDoOutput(0) = true
 
         fnFileContents = m_getFileContentsAsArray(fnHTMLfile)
 
@@ -123,14 +160,49 @@ class TemplateEngine
                             select case fnCommand
                                 case "IF":
                                     fnIfLevel = fnIfLevel + 1
+                                    redim preserve fnDoOutput(fnIfLevel)
+                                    fnDoOutput(fnIfLevel) = true
+                                    set fnMatches = fnregex.Execute(fnFileLine)
+                                    for each fnMatch in fnMatches
+                                        fnTestValue = fnMatch.Value
+                                        fnTestValue = Mid(fnTestValue,6,len(fnTestValue)-8)
+                                        if(instr(fnTestValue,"=") > 0) then
+                                            fnTestVals = Split(fnTestValue,"=")
+                                            if(m_items(fnTestVals(0)) <> fnTestVals(1)) then
+                                                fnDoOutput(fnIfLevel) = false
+                                            end if
+                                        else
+                                            if(NOT m_items.Exists(fnTestValue)) then
+                                                fnDoOutput(fnIfLevel) = false
+                                            end if
+                                        end if
+                                    next
+                                    fnFileLine = fnregex.Replace(fnFileLine,"")
                                 case "ENDIF"
                                     fnIfLevel = fnIfLevel - 1
+                                    fnFileLine = fnregex.Replace(fnFileLine,"")
+                                case "ELSE"
+                                    if(fnIfLevel = 0) then
+                                        fnResult = "Unexpected {{ELSE}}"
+                                        exit for
+                                    end if
+                                    if(fnDoOutput(fnIfLevel)) then
+                                        fnDoOutput(fnIfLevel) = false
+                                    else
+                                        fnDoOutput(fnIfLevel) = true
+                                    end if
+                                    fnFileLine = fnregex.Replace(fnFileLine,"")
+
                             end select
 
                         end if
 
                     set fnregex = nothing
                 next
+
+                if(fnDoOutput(fnIfLevel)) then
+                    fnResult = fnResult & m_applyToString(fnFileLine)
+                end if
 
             next
 
@@ -150,41 +222,17 @@ class TemplateEngine
 
     public function apply( fnHTMLfile )
 
-        dim fnResult, fnItem, fnIV, fnPattern, i, fnArrRes
+        dim fnResult
 
         fnResult = m_getFileContents(fnHTMLfile)
 
-        if (fnResult <> false) then
+        if (not isEmpty(fnResult) and fnResult <> false) then
 
-            for each fnItem in m_items
-
-                fnIV = m_items(fnItem)
-
-                if(isArray(fnIV)) then
-
-                    fnPattern = fnIV(0)
-                    fnArrRes = ""
-
-                    for i = 1 to ubound(fnIV)
-
-                        fnArrRes = Replace(fnArrRes,"{{ITEM}}",fnIV(i))
-                        fnArrRes = Replace(fnArrRes,"{{INDEX}}",i-1)
-
-                    next
-
-                    fnResult = Replace(fnResult,"{{" & fnItem & "}}",fnArrRes)
-
-                else
-
-                    fnResult = Replace(fnResult,"{{" & fnItem & "}}",fnIV)
-
-                end if
-
-            next
+            fnResult = m_applyToString(fnResult)
 
         else
 
-            fnResult = "Could not load template file: " & m_templ_dir & fnHTMLfile
+            fnResult = "Could not load template file: " & Server.MapPath(m_templ_dir & fnHTMLfile) & "<br/>"
 
         end if
 
