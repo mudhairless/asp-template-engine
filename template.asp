@@ -24,9 +24,23 @@ class TemplateEngine
         Items = m_items
     end property
 
-    public sub add( fnKey, fnVal )
-        m_items.add fnKey, fnVal
-    end sub
+    public function add( fnKey, fnVal )
+        if(not m_items.Exist(fnKey)) then
+            m_items.add fnKey, fnVal
+            add = true
+        else
+            add = false
+        end if
+    end function
+
+    public function replace( fnKey, fnVal )
+        if(not m_items.Exist(fnKey)) then
+            replace = false
+        else
+            m_items(fnKey) = fnVal
+            replace = true
+        end if
+    end function
 
     public property Let TemplateDirectory( fnDir )
         m_templ_dir = fnDir
