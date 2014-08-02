@@ -10,6 +10,9 @@ class TemplateEngine
         m_commands.add "IF", "\{\{IF\(.*\)\}\}"
         m_commands.add "ELSE", "\{\{ELSE\}\}"
         m_commands.add "ENDIF", "\{\{ENDIF\}\}"
+        m_commands.add "INCLUDE", "\{\{\INCLUDE\[.*\]\}\}"
+
+        m_warn_on_unused = false
     end sub
 
     private sub Class_Deinitialize
@@ -31,6 +34,14 @@ class TemplateEngine
 
     public property get TemplateDirectory
         TemplateDirectory = m_templ_dir
+    end property
+
+    public property Let WarnOnUnusedTags( fBool )
+        m_warn_on_unused = fbool
+    end property
+
+    public property get WarnOnUnusedTags
+        WarnOnUnusedTags = m_warn_on_unused
     end property
 
     private function m_getFileContentsAsArray( fnHTMLfile )
@@ -135,6 +146,28 @@ class TemplateEngine
 
     end function
 
+    private function m_checkForUnusedTags( mFnString )
+        dim mFnResult, mFnregex
+        set mFnregex = new RegExp
+
+            mFnregex.Pattern = "\{\{.*\}\}"
+            mFnregex.Global = true
+
+            if(mFnregex.Test(mFnString)) then
+                set mFnMatches = mFnregex.Execute(mFnString)
+                for each mfnmatch in mFnMatches
+                    mFnResult = mFnResult & "Tag " & mfnmatch.Value & " still exists in output." & vbCRLF
+                next
+            else
+                mFnResult = mFnString
+            end if
+
+        set mFnregex = nothing
+
+        m_checkForUnusedTags = mFnResult
+
+    end function
+
     public function parse( fnHTMLfile )
 
         dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue
@@ -177,6 +210,7 @@ class TemplateEngine
                                             end if
                                         end if
                                     next
+                                    set fnMatches = nothing
                                     fnFileLine = fnregex.Replace(fnFileLine,"")
                                 case "ENDIF"
                                     fnIfLevel = fnIfLevel - 1
@@ -193,6 +227,19 @@ class TemplateEngine
                                     end if
                                     fnFileLine = fnregex.Replace(fnFileLine,"")
 
+                                case "INCLUDE"
+                                    if(fnDoOutput(fnIfLevel)) then
+                                    set fnMatches = fnregex.Execute(fnFileLine)
+                                        for each fnMatch in fnMatches
+                                            fnTestValue = fnMatch.Value
+                                            fnTestValue = Mid(fnTestValue,11,len(fnTestValue)-13)
+                                            fnFileLine = fnregex.Replace(fnFileLine,parse(fnTestValue))
+                                        next
+                                        set fnMatches = nothing
+
+                                    end if
+
+
                             end select
 
                         end if
@@ -201,7 +248,7 @@ class TemplateEngine
                 next
 
                 if(fnDoOutput(fnIfLevel)) then
-                    fnResult = fnResult & m_applyToString(fnFileLine)
+                    fnResult = fnResult & fnFileLine
                 end if
 
             next
@@ -214,6 +261,14 @@ class TemplateEngine
             fnResult = "Expected {{ENDIF}} Source: " & m_templ_dir & fnHTMLfile
         elseif(fnIfLevel < 0) then
             fnResult = "Unexpected {{ENDIF}} Source: " & m_templ_dir & fnHTMLfile
+        end if
+
+        fnResult = m_applyToString(fnResult)
+
+        if(m_warn_on_unused) then
+
+            fnResult = m_checkForUnusedTags(fnResult)
+
         end if
 
         parse = fnResult
@@ -236,6 +291,12 @@ class TemplateEngine
 
         end if
 
+        if(m_warn_on_unused) then
+
+            fnResult = m_checkForUnusedTags(fnResult)
+
+        end if
+
         apply = fnResult
 
     end function
@@ -243,6 +304,7 @@ class TemplateEngine
     private m_items
     private m_templ_dir
     private m_commands
+    private m_warn_on_unused
 
 
 end class
