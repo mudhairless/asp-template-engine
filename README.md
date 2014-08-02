@@ -78,3 +78,38 @@ Properties
   * Items (read-only)
 
     > Returns the underlying Dictionary collection storing the variables and their values.
+
+Commands
+========
+
+  * `{{IF(expression)}}`
+
+    > Outputs the content following the IF statement until an ELSE or
+      ENDIF statement is reached only if the expression is true. The expression
+      takes the following forms:
+
+        * `variable_name=value`
+
+          > The named variable's value is tested against the string value on the
+            right side of the equal sign (=) and the expression is considered
+            true if they match.
+
+        * `variable_name`
+
+          > This expression form is considered true if the named variable
+            exists in the Items collection.
+
+  * `{{ELSE}}`
+
+    > Outputs the content following the ELSE statement until an ENDIF
+      statement is reached if the preceding IF statement expression
+      evaluates to false.
+
+  * `{{ENDIF}}`
+
+    > Ends an IF statement.
+
+  * `{{INCLUDE[template_file]}}`
+
+    > Parses the contents of the specified file and places them at the point
+      of the INCLUDE statement.
