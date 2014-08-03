@@ -17,14 +17,20 @@ class TemplateEngine
 
         set m_hasher = new MD5
         m_enable_cache = false
+        m_cache_todb = false
         m_cache_filename = "{{VARHASH}}.{{VALHASH}}.{{FILE}}.cache"
         m_cache_dir = "/cache/"
+        m_db = Server.CreateObject("ADODB.Connection")
     end sub
 
     private sub Class_Deinitialize
         set m_items = nothing
         set m_commands = nothing
         set m_hasher = nothing
+        if(m_cache_todb and m_cache_db_connect <> "") then
+            m_db.close
+        end if
+        set m_db = nothing
     end sub
 
     public property Let EnableCache( mbool )
@@ -52,6 +58,49 @@ class TemplateEngine
 
     public property get CacheFilename
         CacheFilename = m_cache_filename
+    end property
+
+    public property Let CacheToDatabase( mbool )
+        m_cache_todb = mbool
+        if(m_cache_todb) then
+            if(not m_enable_cache) then
+                EnableCache = true
+            end if
+            if(m_cache_db_connect<>"") then
+                m_db.Open m_cache_db_connect
+            end if
+        end if
+    end property
+
+    public property get CacheToDatabase
+        CacheToDatabase = m_cache_todb
+    end property
+
+    public property Let CacheDatabaseTable(mcstring)
+        m_cache_db_table = mcstring
+    end property
+
+    public property get CacheDatabaseTable
+        CacheDatabaseTable = m_cache_db_table
+    end property
+
+    public property Let CacheDatabaseFields(mfieldsarray)
+        if(isArray(mfieldsarray)) then
+            m_cache_db_field_key = mfieldsarray(0)
+            m_cache_db_field_val = mfieldsarray(1)
+        end if
+    end property
+
+    public property get CacheDatabaseFields
+        CacheDatabaseFields = array(m_cache_db_field_key,m_cache_db_field_val)
+    end property
+
+    public property Let CacheDatabaseConnect(mcstring)
+        m_cache_db_connect = mcstring
+    end property
+
+    public property get CacheDatabaseConnect
+        CacheDatabaseConnect = m_cache_db_connect
     end property
 
     public property get Items
@@ -220,6 +269,50 @@ class TemplateEngine
 
     end function
 
+    private function m_getFileFromDB( mFnHash )
+
+        dim fnrs, fnResult, fnSQL
+        set fnrs = Server.CreateObject("ADODB.Recordset")
+
+            fnSQL = "SELECT * FROM " & m_cache_db_table & " WHERE " & m_cache_db_field_key & "='" & mFnHash & "'"
+
+            fnrs.open fnSQL, m_db, 0, 1
+
+            if(not fnrs.EOF) then
+                fnResult = fnrs(m_cache_db_field_val)
+                fnrs.close
+            else
+                fnResult = false
+            end if
+
+        set fnrs = nothing
+
+        m_getFileFromDB = fnResult
+
+    end function
+
+    private sub m_putFileToDB( mFnHash, mfnfiledata )
+
+        dim fnrs, fnResult
+        set fnrs = Server.CreateObject("ADODB.Recordset")
+
+            fnSQL = "SELECT * FROM " & m_cache_db_table & " WHERE " & m_cache_db_field_key & "='" & mFnHash & "'"
+
+            fnrs.open fnSQL, m_db, 1, 3
+
+            if(fnrs.EOF) then
+                fnrs.AddNew
+                fnrs(m_cache_db_field_key) = mFnHash
+            end if
+
+            fnrs(m_cache_db_field_val) = mfnfiledata
+            fnrs.update
+            fnrs.close
+
+        set fnrs = nothing
+
+    end sub
+
     private function m_applyToString( mFnString )
 
         dim mFnResult, fnItem, fnIV, fnPattern, i, fnArrRes
@@ -279,7 +372,8 @@ class TemplateEngine
 
     public function parse( fnHTMLfile )
 
-        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue,fnLineNo,fnSkip
+        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue,fnLineNo
+        dim fnCachedFilename,fnSkip
         fnIfLevel = 0
         redim fnDoOutput(1)
         fnDoOutput(0) = true
@@ -288,18 +382,27 @@ class TemplateEngine
 
         if(m_enable_cache) then
 
-            dim fnCachedFilename
-            fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
-            fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
-            fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+            if(m_cache_todb) then
+                fnCachedFilename = m_input_hash_vars & m_hash_values & fnHTMLfile
+                fnFileContents = m_getFileFromDB(fnCachedFilename)
 
-            fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
+                if(fnFileContents <> false AND fnFileContents <> "") then
+                    fnResult = fnFileContents
+                    fnSkip = true
+                end if
+            else
 
-            if(fnFileContents <> false AND fnFileContents <> "") then
-                fnResult = fnFileContents
-                fnSkip = true
+                fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+                fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+                fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+
+                fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
+
+                if(fnFileContents <> false AND fnFileContents <> "") then
+                    fnResult = fnFileContents
+                    fnSkip = true
+                end if
             end if
-
         end if
 
         if(not fnSkip) then
@@ -401,10 +504,15 @@ class TemplateEngine
             end if
 
             if(m_enable_cache) then
-                fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
-                fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
-                fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
-                call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+                if(m_cache_todb) then
+                    fnCachedFilename = m_input_hash_vars & m_hash_values & fnHTMLfile
+                    call m_putFileToDB(fnCachedFilename,fnResult)
+                else
+                    fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+                    fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+                    fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+                    call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+                end if
             end if
 
         end if
@@ -415,23 +523,32 @@ class TemplateEngine
 
     public function apply( fnHTMLfile )
 
-        dim fnResult, fnSkip, fnFileContents
+        dim fnResult, fnSkip, fnFileContents, fnCachedFilename
         fnSkip = false
 
         if(m_enable_cache) then
 
-            dim fnCachedFilename
-            fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
-            fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
-            fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+            if(m_cache_todb) then
+                fnCachedFilename = m_input_hash_vars & m_hash_values & fnHTMLfile
+                fnFileContents = m_getFileFromDB(fnCachedFilename)
 
-            fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
+                if(fnFileContents <> false AND fnFileContents <> "") then
+                    fnResult = fnFileContents
+                    fnSkip = true
+                end if
+            else
 
-            if(fnFileContents <> false AND fnFileContents <> "") then
-                fnResult = fnFileContents
-                fnSkip = true
+                fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+                fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+                fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+
+                fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
+
+                if(fnFileContents <> false AND fnFileContents <> "") then
+                    fnResult = fnFileContents
+                    fnSkip = true
+                end if
             end if
-
         end if
 
         if(not fnSkip) then
@@ -455,10 +572,15 @@ class TemplateEngine
             end if
 
             if(m_enable_cache) then
-                fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
-                fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
-                fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
-                call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+                if(m_cache_todb) then
+                    fnCachedFilename = m_input_hash_vars & m_hash_values & fnHTMLfile
+                    call m_putFileToDB(fnCachedFilename,fnResult)
+                else
+                    fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+                    fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+                    fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+                    call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+                end if
             end if
 
         end if
@@ -477,6 +599,12 @@ class TemplateEngine
     private m_cache_dir
     private m_hasher
     private m_cache_filename
+    private m_cache_todb
+    private m_cache_db_table
+    private m_cache_db_field_key
+    private m_cache_db_field_val
+    private m_cache_db_connect
+    private m_db
 
 end class
 

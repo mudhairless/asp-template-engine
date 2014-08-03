@@ -32,6 +32,40 @@ How To Use CATE from ASP
         set TENGINE = nothing
     %>
 
+How to Cache to a Database
+--------------------------
+    <!-- #include virtual="/path/to/template.asp" -->
+    <%
+        set TENGINE = new TemplateEngine
+        TENGINE.TemplateDirectory = "/path/to/templates/"
+        TENGINE.CacheDatabaseTable = "cache_table_name"
+        TENGINE.CacheDatabaseFields = array("key_column","value_column")
+        TENGINE.CacheDatabaseConnect = "my db connect string"
+        TENGINE.CacheToDatabase = true
+        TENGINE.add "PAGE_TITLE", "Test"
+        TENGINE.add "PAGE_CONTENT", "Testing"
+        TENGINE.add "test", "true"
+        outcontent = TENGINE.parse("testing.tpl")
+        Response.Write outcontent
+        set TENGINE = nothing
+    %>
+
+How to Cache to Files
+--------------------------
+    <!-- #include virtual="/path/to/template.asp" -->
+    <%
+        set TENGINE = new TemplateEngine
+        TENGINE.TemplateDirectory = "/path/to/templates/"
+        TENGINE.CacheDirectory = "/path/to/cache/dir/"
+        TENGINE.EnableCache = true
+        TENGINE.add "PAGE_TITLE", "Test"
+        TENGINE.add "PAGE_CONTENT", "Testing"
+        TENGINE.add "test", "true"
+        outcontent = TENGINE.parse("testing.tpl")
+        Response.Write outcontent
+        set TENGINE = nothing
+    %>
+
 Methods
 -------
 
@@ -80,6 +114,28 @@ Properties
     > Set the template to use when building the filename of a cache file.
       Three variables are replaced in the filename to enable their
       uniqueness. The default value is: `{{VARHASH}}.{{VALHASH}}.{{FILE}}.cache`
+
+  * CacheToDatabase (read/write)
+
+    > Enable caching output to a database, call after setting other database
+      options. Will turn the EnableCache property to true if it is not
+      set.
+
+  * CacheDatabaseTable (read/write)
+
+    > The name of the database table to store cached date in.
+
+  * CacheDatabaseFields (read/write)
+
+    > The names of the fields used to store the content in. This value is
+      and array with the name of the *key* field first and the name of
+      the *value* field second. The columns in the database should be large
+      enough to store the data, the key field should be 64 + MAX_FILE_PATH
+      and the value field should be either TEXT or varchar(MAX).
+
+  * CacheDatabaseConnect (read/write)
+
+    > The connection string to use to connect to your database.
 
   * TemplateDirectory (read/write)
 
