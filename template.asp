@@ -279,11 +279,12 @@ class TemplateEngine
 
     public function parse( fnHTMLfile )
 
-        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue,fnLineNo
+        dim fnFileContents, fnResult, fnFileLine, fnregex, fnCommand, fnIfLevel, fnDoOutput(), fnTestValue,fnLineNo,fnSkip
         fnIfLevel = 0
         redim fnDoOutput(1)
         fnDoOutput(0) = true
         fnLineNo = 1
+        fnSkip = false
 
         if(m_enable_cache) then
 
@@ -295,115 +296,117 @@ class TemplateEngine
             fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
 
             if(fnFileContents <> false AND fnFileContents <> "") then
-                parse = fnFileContents
-                exit function
+                fnResult = fnFileContents
+                fnSkip = true
             end if
 
         end if
 
-        fnFileContents = m_getFileContentsAsArray(m_templ_dir & fnHTMLfile)
+        if(not fnSkip) then
 
-        if(fnFileContents(0) <> false) then
+            fnFileContents = m_getFileContentsAsArray(m_templ_dir & fnHTMLfile)
 
-            for each fnFileLine in fnFileContents
+            if(fnFileContents(0) <> false) then
 
-                for each fnCommand in m_commands
-                    set fnregex = new RegExp
+                for each fnFileLine in fnFileContents
 
-                        fnregex.Pattern = m_commands(fnCommand)
-                        fnregex.IgnoreCase = true
-                        fnregex.Global = true
+                    for each fnCommand in m_commands
+                        set fnregex = new RegExp
 
-                        if(fnregex.Test(fnFileLine)) then
+                            fnregex.Pattern = m_commands(fnCommand)
+                            fnregex.IgnoreCase = true
+                            fnregex.Global = true
 
-                            select case fnCommand
-                                case "IF":
-                                    fnIfLevel = fnIfLevel + 1
-                                    redim preserve fnDoOutput(fnIfLevel)
-                                    fnDoOutput(fnIfLevel) = true
-                                    set fnMatches = fnregex.Execute(fnFileLine)
-                                    for each fnMatch in fnMatches
-                                        fnTestValue = fnMatch.Value
-                                        fnTestValue = Mid(fnTestValue,6,len(fnTestValue)-8)
-                                        if(instr(fnTestValue,"=") > 0) then
-                                            fnTestVals = Split(fnTestValue,"=")
-                                            if(m_items(fnTestVals(0)) <> fnTestVals(1)) then
-                                                fnDoOutput(fnIfLevel) = false
-                                            end if
-                                        else
-                                            if(NOT m_items.Exists(fnTestValue)) then
-                                                fnDoOutput(fnIfLevel) = false
-                                            end if
-                                        end if
-                                    next
-                                    set fnMatches = nothing
-                                    fnFileLine = fnregex.Replace(fnFileLine,"")
-                                case "ENDIF"
-                                    fnIfLevel = fnIfLevel - 1
-                                    fnFileLine = fnregex.Replace(fnFileLine,"")
-                                case "ELSE"
-                                    if(fnIfLevel = 0) then
-                                        fnResult = "Unexpected {{ELSE}}"
-                                        exit for
-                                    end if
-                                    if(fnDoOutput(fnIfLevel)) then
-                                        fnDoOutput(fnIfLevel) = false
-                                    else
+                            if(fnregex.Test(fnFileLine)) then
+
+                                select case fnCommand
+                                    case "IF":
+                                        fnIfLevel = fnIfLevel + 1
+                                        redim preserve fnDoOutput(fnIfLevel)
                                         fnDoOutput(fnIfLevel) = true
-                                    end if
-                                    fnFileLine = fnregex.Replace(fnFileLine,"")
-
-                                case "INCLUDE"
-                                    if(fnDoOutput(fnIfLevel)) then
-                                    set fnMatches = fnregex.Execute(fnFileLine)
+                                        set fnMatches = fnregex.Execute(fnFileLine)
                                         for each fnMatch in fnMatches
                                             fnTestValue = fnMatch.Value
-                                            fnTestValue = Mid(fnTestValue,11,len(fnTestValue)-13)
-                                            fnFileLine = fnregex.Replace(fnFileLine,parse(fnTestValue))
+                                            fnTestValue = Mid(fnTestValue,6,len(fnTestValue)-8)
+                                            if(instr(fnTestValue,"=") > 0) then
+                                                fnTestVals = Split(fnTestValue,"=")
+                                                if(m_items(fnTestVals(0)) <> fnTestVals(1)) then
+                                                    fnDoOutput(fnIfLevel) = false
+                                                end if
+                                            else
+                                                if(NOT m_items.Exists(fnTestValue)) then
+                                                    fnDoOutput(fnIfLevel) = false
+                                                end if
+                                            end if
                                         next
                                         set fnMatches = nothing
+                                        fnFileLine = fnregex.Replace(fnFileLine,"")
+                                    case "ENDIF"
+                                        fnIfLevel = fnIfLevel - 1
+                                        fnFileLine = fnregex.Replace(fnFileLine,"")
+                                    case "ELSE"
+                                        if(fnIfLevel = 0) then
+                                            fnResult = "Unexpected {{ELSE}}"
+                                            exit for
+                                        end if
+                                        if(fnDoOutput(fnIfLevel)) then
+                                            fnDoOutput(fnIfLevel) = false
+                                        else
+                                            fnDoOutput(fnIfLevel) = true
+                                        end if
+                                        fnFileLine = fnregex.Replace(fnFileLine,"")
 
-                                    end if
+                                    case "INCLUDE"
+                                        if(fnDoOutput(fnIfLevel)) then
+                                        set fnMatches = fnregex.Execute(fnFileLine)
+                                            for each fnMatch in fnMatches
+                                                fnTestValue = fnMatch.Value
+                                                fnTestValue = Mid(fnTestValue,11,len(fnTestValue)-13)
+                                                fnFileLine = fnregex.Replace(fnFileLine,parse(fnTestValue))
+                                            next
+                                            set fnMatches = nothing
 
+                                        end if
+                                end select
 
-                            end select
+                            end if
 
-                        end if
+                        set fnregex = nothing
+                    next
 
-                    set fnregex = nothing
+                    if(fnDoOutput(fnIfLevel)) then
+                        fnResult = fnResult & fnFileLine
+                    end if
+
+                    fnLineNo = fnLineNo + 1
+
                 next
 
-                if(fnDoOutput(fnIfLevel)) then
-                    fnResult = fnResult & fnFileLine
-                end if
+            else
+                fnResult = "Could not load template file: " & m_templ_dir & fnHTMLfile
+            end if
 
-                fnLineNo = fnLineNo + 1
+            if(fnIfLevel > 0) then
+                fnResult = "Expected {{ENDIF}} Source: " & m_templ_dir & fnHTMLfile
+            elseif(fnIfLevel < 0) then
+                fnResult = "Unexpected {{ENDIF}} Source: " & m_templ_dir & fnHTMLfile
+            end if
 
-            next
+            fnResult = m_applyToString(fnResult)
 
-        else
-            fnResult = "Could not load template file: " & m_templ_dir & fnHTMLfile
-        end if
+            if(m_warn_on_unused) then
 
-        if(fnIfLevel > 0) then
-            fnResult = "Expected {{ENDIF}} Source: " & m_templ_dir & fnHTMLfile
-        elseif(fnIfLevel < 0) then
-            fnResult = "Unexpected {{ENDIF}} Source: " & m_templ_dir & fnHTMLfile
-        end if
+                fnResult = m_checkForUnusedTags(fnResult)
 
-        fnResult = m_applyToString(fnResult)
+            end if
 
-        if(m_warn_on_unused) then
+            if(m_enable_cache) then
+                fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+                fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+                fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+                call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+            end if
 
-            fnResult = m_checkForUnusedTags(fnResult)
-
-        end if
-
-        if(m_enable_cache) then
-            fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
-            fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
-            fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
-            call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
         end if
 
         parse = fnResult
