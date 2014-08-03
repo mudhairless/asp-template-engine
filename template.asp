@@ -1,3 +1,4 @@
+<!-- #include file="md5.asp" -->
 <%
 'Template Engine
 
@@ -13,32 +14,71 @@ class TemplateEngine
         m_commands.add "INCLUDE", "\{\{\INCLUDE\[.*\]\}\}"
 
         m_warn_on_unused = false
+
+        set m_hasher = new MD5
+        m_enable_cache = false
+        m_cache_filename = "{{VARHASH}}.{{VALHASH}}.{{FILE}}.cache"
+        m_cache_dir = "/cache/"
     end sub
 
     private sub Class_Deinitialize
         set m_items = nothing
         set m_commands = nothing
+        set m_hasher = nothing
     end sub
+
+    public property Let EnableCache( mbool )
+        m_enable_cache = mbool
+        if(m_enable_cache = true) then
+            call hash_all()
+        end if
+    end property
+
+    public property get EnableCache
+        EnableCache = m_enable_cache
+    end property
+
+    public property Let CacheDirectory( mcstring )
+        m_cache_dir = mcstring
+    end property
+
+    public property get CacheDirectory
+        CacheDirectory = m_cache_dir
+    end property
+
+    public property Let CacheFilename( mcstring )
+        m_cache_filename = mcstring
+    end property
+
+    public property get CacheFilename
+        CacheFilename = m_cache_filename
+    end property
 
     public property get Items
         Items = m_items
     end property
 
     public function add( fnKey, fnVal )
-        if(not m_items.Exist(fnKey)) then
+        if(not m_items.Exists(fnKey)) then
             m_items.add fnKey, fnVal
+            if(m_enable_cache) then
+                call hash_new(fnKey,fnVal)
+            end if
             add = true
         else
             add = false
         end if
     end function
 
-    public function replace( fnKey, fnVal )
-        if(not m_items.Exist(fnKey)) then
-            replace = false
+    public function replaceValue( fnKey, fnVal )
+        if(not m_items.Exists(fnKey)) then
+            replaceValue = false
         else
             m_items(fnKey) = fnVal
-            replace = true
+            replaceValue = true
+            m_input_hash_vars = ""
+            m_input_hash_values = ""
+            call hash_all()
         end if
     end function
 
@@ -57,6 +97,33 @@ class TemplateEngine
     public property get WarnOnUnusedTags
         WarnOnUnusedTags = m_warn_on_unused
     end property
+
+    private sub hash_all
+        dim fnKey, fnVal, fnVali
+        for each fnKey in m_items
+            m_input_hash_vars = m_hasher.Hash(m_input_hash_vars & fnKey)
+            fnVal = m_items(fnKey)
+            if(isArray(fnVal)) then
+                for each fnVali in fnVal
+                    m_input_hash_values = m_hasher.Hash(m_input_hash_values & fnVali)
+                next
+            else
+                m_input_hash_values = m_hasher.Hash(m_input_hash_values & fnVal)
+            end if
+        next
+    end sub
+
+    private sub hash_new( mkey, mval )
+        dim fnVali
+        m_input_hash_vars = m_hasher.Hash(m_input_hash_vars & mkey)
+        if(isArray(mval)) then
+            for each fnVali in mval
+                m_input_hash_values = m_hasher.Hash(m_input_hash_values & fnVali)
+            next
+        else
+            m_input_hash_values = m_hasher.Hash(m_input_hash_values & mval)
+        end if
+    end sub
 
     private function m_getFileContentsAsArray( fnHTMLfile )
 
@@ -80,6 +147,8 @@ class TemplateEngine
 
                     wend
 
+                    fnFile.Close
+
                 set fnFile = nothing
 
             end if
@@ -95,21 +164,46 @@ class TemplateEngine
 
     end function
 
+    private sub m_writeFile( fnFileToWrite, fnFileData )
+
+        dim mfnfso, mfnfileh
+        set mfnfso = Server.CreateObject("Scripting.FileSystemObject")
+
+            set mfnfileh = mfnfso.CreateTextFile(Server.MapPath(fnFileToWrite),2,0)
+
+                if(isArray(fnFileData)) then
+                    for each mFileLine in fnFileData
+                        mfnfileh.WriteLine(fnFileData)
+                    next
+                else
+                    mfnfileh.Write(fnFileData)
+                end if
+
+                mfnfileh.Close
+
+            set mfnfileh = nothing
+
+        set mfnfso = nothing
+
+    end sub
+
     private function m_getFileContents( fnHTMLfilef )
 
         dim fnResultf, fnfsof, fnFilef
 
         set fnfsof = Server.CreateObject("Scripting.FileSystemObject")
 
-            if(fnfsof.FileExists(Server.MapPath(m_templ_dir & fnHTMLfilef))) then
+            if(fnfsof.FileExists(Server.MapPath(fnHTMLfilef))) then
 
-                set fnFilef = fnfsof.OpenTextFile(Server.MapPath(m_templ_dir & fnHTMLfilef))
+                set fnFilef = fnfsof.OpenTextFile(Server.MapPath(fnHTMLfilef),1,true,0)
 
                     fnResultf = fnFilef.ReadAll()
 
                     if(fnResultf = "") then
                         fnResultf = "Error reading template file: " & fnHTMLfilef
                     end if
+
+                    fnFilef.Close
 
                 set fnFilef = nothing
 
@@ -120,6 +214,7 @@ class TemplateEngine
             end if
 
         set fnfsof = nothing
+
 
         m_getFileContents = fnResultf
 
@@ -190,7 +285,23 @@ class TemplateEngine
         fnDoOutput(0) = true
         fnLineNo = 1
 
-        fnFileContents = m_getFileContentsAsArray(fnHTMLfile)
+        if(m_enable_cache) then
+
+            dim fnCachedFilename
+            fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+            fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+            fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+
+            fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
+
+            if(fnFileContents <> false AND fnFileContents <> "") then
+                parse = fnFileContents
+                exit function
+            end if
+
+        end if
+
+        fnFileContents = m_getFileContentsAsArray(m_templ_dir & fnHTMLfile)
 
         if(fnFileContents(0) <> false) then
 
@@ -288,29 +399,64 @@ class TemplateEngine
 
         end if
 
+        if(m_enable_cache) then
+            fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+            fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+            fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+            call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+        end if
+
         parse = fnResult
 
     end function
 
     public function apply( fnHTMLfile )
 
-        dim fnResult
+        dim fnResult, fnSkip, fnFileContents
+        fnSkip = false
 
-        fnResult = m_getFileContents(fnHTMLfile)
+        if(m_enable_cache) then
 
-        if (not isEmpty(fnResult) and fnResult <> false) then
+            dim fnCachedFilename
+            fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+            fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+            fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
 
-            fnResult = m_applyToString(fnResult)
+            fnFileContents = m_getFileContents(m_cache_dir & fnCachedFilename)
 
-        else
-
-            fnResult = "Could not load template file: " & Server.MapPath(m_templ_dir & fnHTMLfile) & "<br/>"
+            if(fnFileContents <> false AND fnFileContents <> "") then
+                fnResult = fnFileContents
+                fnSkip = true
+            end if
 
         end if
 
-        if(m_warn_on_unused) then
+        if(not fnSkip) then
 
-            fnResult = m_checkForUnusedTags(fnResult)
+            fnResult = m_getFileContents(m_templ_dir & fnHTMLfile)
+
+            if (not isEmpty(fnResult) and fnResult <> false) then
+
+                fnResult = m_applyToString(fnResult)
+
+            else
+
+                fnResult = "Could not load template file: " & Server.MapPath(m_templ_dir & fnHTMLfile) & "<br/>"
+
+            end if
+
+            if(m_warn_on_unused) then
+
+                fnResult = m_checkForUnusedTags(fnResult)
+
+            end if
+
+            if(m_enable_cache) then
+                fnCachedFilename = Replace(m_cache_filename,"{{VARHASH}}", m_input_hash_vars)
+                fnCachedFilename = Replace(fnCachedFilename,"{{VALHASH}}", m_input_hash_values)
+                fnCachedFilename = Replace(fnCachedFilename,"{{FILE}}", fnHTMLfile)
+                call m_writeFile(m_cache_dir & fnCachedFilename,fnResult)
+            end if
 
         end if
 
@@ -322,7 +468,12 @@ class TemplateEngine
     private m_templ_dir
     private m_commands
     private m_warn_on_unused
-
+    private m_input_hash_vars
+    private m_input_hash_values
+    private m_enable_cache
+    private m_cache_dir
+    private m_hasher
+    private m_cache_filename
 
 end class
 

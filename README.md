@@ -54,13 +54,32 @@ Methods
       Returns a string containing the template file with commands parsed
       and variables replaced or an error message.
 
-  * replace( variable_name, value )
+  * replaceValue( variable_name, value )
 
     > Replaces the named variables value with the specified value.
       Returns true if the variable was replaced or false if it does not exist.
 
 Properties
 ==========
+
+  * EnableCache (read/write)
+
+    > Enable caching of output. For large or complex files potentially
+      save time processing files by caching their output. Cached files
+      are based on both the available variables and their values as well
+      as the template file name. This cacheing process is deterministic
+      so the same inputs/values/file will always give the same output.
+
+  * CacheDirectory (read/write)
+
+    > Sets the base directory to store and look for cached files in. The
+      default value is `/cache/`
+
+  * CacheFilename (read/write)
+
+    > Set the template to use when building the filename of a cache file.
+      Three variables are replaced in the filename to enable their
+      uniqueness. The default value is: `{{VARHASH}}.{{VALHASH}}.{{FILE}}.cache`
 
   * TemplateDirectory (read/write)
 
